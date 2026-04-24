@@ -17,28 +17,29 @@ export const loanRepository = {
   async list(filters = {}, connection = pool) {
     const search = filters.search ? `%${filters.search}%` : null;
     const status = filters.status ? String(filters.status).toLowerCase() : null;
-    const clientId = filters.client_id || null;
-    const [rows] = await connection.query(
+    const parsedClientId = filters.client_id === undefined ? null : Number(filters.client_id);
+    const clientId = Number.isFinite(parsedClientId) ? parsedClientId : null;
+    const { rows } = await connection.query(
       `${baseSelect}
        WHERE (
-         ? IS NULL OR
-         CAST(l.id AS CHAR) LIKE ? OR
-         l.loan_code LIKE ? OR
-         c.client_code LIKE ? OR
-         CONCAT_WS(' ', c.first_name, c.last_name, c.other_names) LIKE ?
+         $1::text IS NULL OR
+         CAST(l.id AS TEXT) ILIKE $1 OR
+         l.loan_code ILIKE $1 OR
+         c.client_code ILIKE $1 OR
+         CONCAT_WS(' ', c.first_name, c.last_name, c.other_names) ILIKE $1
        )
-         AND (? IS NULL OR l.status = ?)
-         AND (? IS NULL OR l.client_id = ?)
+         AND ($2::text IS NULL OR LOWER(l.status::text) = $2)
+         AND ($3::bigint IS NULL OR l.client_id = $3)
        ORDER BY l.created_at DESC`,
-      [search, search, search, search, search, status, status, clientId, clientId]
+      [search, status, clientId]
     );
     return rows;
   },
 
   async listByClientId(clientId, connection = pool) {
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `${baseSelect}
-       WHERE l.client_id = ?
+       WHERE l.client_id = $1
        ORDER BY l.created_at DESC`,
       [clientId]
     );
@@ -46,9 +47,9 @@ export const loanRepository = {
   },
 
   async findById(id, connection = pool) {
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `${baseSelect}
-       WHERE l.id = ?
+       WHERE l.id = $1
        LIMIT 1`,
       [id]
     );
@@ -56,9 +57,9 @@ export const loanRepository = {
   },
 
   async findByIdForUpdate(id, connection) {
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `${baseSelect}
-       WHERE l.id = ?
+       WHERE l.id = $1
        LIMIT 1
        FOR UPDATE`,
       [id]
@@ -67,10 +68,10 @@ export const loanRepository = {
   },
 
   async countOpenLoansForClient(clientId, connection = pool) {
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `SELECT COUNT(*) AS open_loan_count
        FROM loans
-       WHERE client_id = ?
+       WHERE client_id = $1
          AND status IN ('draft', 'pending', 'active', 'overdue')`,
       [clientId]
     );
@@ -78,14 +79,17 @@ export const loanRepository = {
   },
 
   async create(loan, connection = pool) {
-    const [result] = await connection.query(
+    const { rows } = await connection.query(
       `INSERT INTO loans (
         loan_code, client_id, principal_amount, interest_rate, interest_type,
         repayment_frequency, duration_value, duration_unit, number_of_installments,
         start_date, first_due_date, maturity_date, grace_period_days, total_interest,
         total_penalties, total_repayable, amount_paid, remaining_balance, status,
         disbursed_by, approved_by, notes, is_active
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (
+        $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
+      )
+      RETURNING id`,
       [
         loan.loan_code,
         loan.client_id,
@@ -112,7 +116,7 @@ export const loanRepository = {
         1,
       ]
     );
-    return result.insertId;
+    return rows[0]?.id || null;
   },
 
   async update(id, fields, connection = pool) {
@@ -120,29 +124,29 @@ export const loanRepository = {
     if (entries.length === 0) {
       return false;
     }
-    const columns = entries.map(([key]) => `${key} = ?`).join(", ");
+    const columns = entries.map(([key], index) => `${key} = $${index + 1}`).join(", ");
     const values = entries.map(([, value]) => value);
-    const [result] = await connection.query(
-      `UPDATE loans SET ${columns}, updated_at = NOW() WHERE id = ?`,
+    const result = await connection.query(
+      `UPDATE loans SET ${columns}, updated_at = CURRENT_TIMESTAMP WHERE id = $${entries.length + 1}`,
       [...values, id]
     );
-    return result.affectedRows > 0;
+    return result.rowCount > 0;
   },
 
   async remove(id, connection = pool) {
-    const [result] = await connection.query("DELETE FROM loans WHERE id = ?", [id]);
-    return result.affectedRows > 0;
+    const result = await connection.query("DELETE FROM loans WHERE id = $1", [id]);
+    return result.rowCount > 0;
   },
 
   async monthlyPortfolio(connection = pool) {
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `SELECT
-        DATE_FORMAT(created_at, '%Y-%m-01') AS month_key,
+        TO_CHAR(DATE_TRUNC('month', created_at)::date, 'YYYY-MM-DD') AS month_key,
         SUM(principal_amount) AS total_disbursed,
         SUM(total_interest) AS expected_interest,
         COUNT(*) AS loans_created
       FROM loans
-      GROUP BY DATE_FORMAT(created_at, '%Y-%m-01')
+      GROUP BY DATE_TRUNC('month', created_at)::date
       ORDER BY month_key ASC`
     );
     return rows;

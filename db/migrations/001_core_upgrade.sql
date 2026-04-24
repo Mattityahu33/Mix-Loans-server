@@ -1,3 +1,7 @@
+-- LEGACY MYSQL MIGRATION (DO NOT USE FOR POSTGRESQL)
+-- This file is retained for historical reference only.
+-- PostgreSQL/Supabase source of truth now lives in: db/postgres/*.sql
+
 CREATE TABLE IF NOT EXISTS admin_users (
     id VARCHAR(32) PRIMARY KEY,
     username VARCHAR(100) NOT NULL UNIQUE,

@@ -4,7 +4,7 @@ export const collateralRepository = {
   async list(filters = {}, connection = pool) {
     const search = filters.search ? `%${filters.search}%` : null;
     const status = filters.collateral_status ? String(filters.collateral_status).toLowerCase() : null;
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `SELECT
         col.*,
         l.loan_code,
@@ -16,21 +16,21 @@ export const collateralRepository = {
       INNER JOIN loans l ON l.id = col.loan_id
       LEFT JOIN clients c ON c.id = l.client_id
       WHERE (
-        ? IS NULL OR
-        l.loan_code LIKE ? OR
-        CONCAT_WS(' ', c.first_name, c.last_name, c.other_names) LIKE ? OR
-        col.description LIKE ? OR
-        col.item_type LIKE ?
+        $1::text IS NULL OR
+        l.loan_code ILIKE $1 OR
+        CONCAT_WS(' ', c.first_name, c.last_name, c.other_names) ILIKE $1 OR
+        col.description ILIKE $1 OR
+        col.item_type ILIKE $1
       )
-        AND (? IS NULL OR col.status = ?)
+        AND ($2::text IS NULL OR LOWER(col.status::text) = $2)
       ORDER BY col.created_at DESC`,
-      [search, search, search, search, search, status, status]
+      [search, status]
     );
     return rows;
   },
 
   async findById(id, connection = pool) {
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `SELECT
         col.*,
         l.loan_code,
@@ -41,7 +41,7 @@ export const collateralRepository = {
       FROM collateral col
       INNER JOIN loans l ON l.id = col.loan_id
       LEFT JOIN clients c ON c.id = l.client_id
-      WHERE col.id = ?
+      WHERE col.id = $1
       LIMIT 1`,
       [id]
     );
@@ -49,11 +49,12 @@ export const collateralRepository = {
   },
 
   async create(collateral, connection = pool) {
-    const [result] = await connection.query(
+    const { rows } = await connection.query(
       `INSERT INTO collateral (
         loan_id, client_id, item_type, description, serial_number,
         estimated_value, valuation_date, status, storage_location, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id`,
       [
         collateral.loan_id,
         collateral.client_id,
@@ -67,7 +68,7 @@ export const collateralRepository = {
         collateral.notes || null,
       ]
     );
-    return result.insertId;
+    return rows[0]?.id || null;
   },
 
   async update(id, fields, connection = pool) {
@@ -75,17 +76,17 @@ export const collateralRepository = {
     if (entries.length === 0) {
       return false;
     }
-    const columns = entries.map(([key]) => `${key} = ?`).join(", ");
+    const columns = entries.map(([key], index) => `${key} = $${index + 1}`).join(", ");
     const values = entries.map(([, value]) => value);
-    const [result] = await connection.query(
-      `UPDATE collateral SET ${columns}, updated_at = NOW() WHERE id = ?`,
+    const result = await connection.query(
+      `UPDATE collateral SET ${columns}, updated_at = CURRENT_TIMESTAMP WHERE id = $${entries.length + 1}`,
       [...values, id]
     );
-    return result.affectedRows > 0;
+    return result.rowCount > 0;
   },
 
   async remove(id, connection = pool) {
-    const [result] = await connection.query("DELETE FROM collateral WHERE id = ?", [id]);
-    return result.affectedRows > 0;
+    const result = await connection.query("DELETE FROM collateral WHERE id = $1", [id]);
+    return result.rowCount > 0;
   },
 };

@@ -6,7 +6,7 @@ export const clientRepository = {
   async list(filters = {}, connection = pool) {
     const search = filters.search ? `%${filters.search}%` : null;
     const riskLevel = filters.risk_level ? uiRiskToDb(filters.risk_level) : null;
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `SELECT
         c.*,
         COUNT(l.id) AS loan_count,
@@ -14,17 +14,17 @@ export const clientRepository = {
       FROM clients c
       LEFT JOIN loans l ON c.id = l.client_id
       WHERE (
-        ? IS NULL OR
-        c.client_code LIKE ? OR
-        c.first_name LIKE ? OR
-        c.last_name LIKE ? OR
-        c.phone LIKE ? OR
-        c.nrc LIKE ?
+        $1::text IS NULL OR
+        c.client_code ILIKE $1 OR
+        c.first_name ILIKE $1 OR
+        c.last_name ILIKE $1 OR
+        c.phone ILIKE $1 OR
+        c.nrc ILIKE $1
       )
-        AND (? IS NULL OR c.risk_level = ?)
+        AND ($2::text IS NULL OR c.risk_level::text = $2)
       GROUP BY c.id
       ORDER BY c.created_at DESC`,
-      [search, search, search, search, search, search, riskLevel, riskLevel]
+      [search, riskLevel]
     );
     return rows.map((row) => ({
       ...row,
@@ -37,14 +37,14 @@ export const clientRepository = {
   },
 
   async findById(id, connection = pool) {
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `SELECT
         c.*,
         COUNT(l.id) AS loan_count,
         COALESCE(SUM(l.remaining_balance), 0) AS total_outstanding
       FROM clients c
       LEFT JOIN loans l ON c.id = l.client_id
-      WHERE c.id = ?
+      WHERE c.id = $1
       GROUP BY c.id`,
       [id]
     );
@@ -63,11 +63,12 @@ export const clientRepository = {
   async create(client, connection = pool) {
     const nameParts = splitFullName(client.name);
     const clientCode = client.id || client.client_code || `CL-${generatePrefixedId("")}`;
-    const [result] = await connection.query(
+    const { rows } = await connection.query(
       `INSERT INTO clients (
         client_code, first_name, last_name, other_names, phone, email, nrc,
         address_line_1, risk_level, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+      RETURNING id`,
       [
         clientCode,
         nameParts.first_name,
@@ -81,7 +82,7 @@ export const clientRepository = {
         client.notes || null,
       ]
     );
-    return result.insertId;
+    return rows[0]?.id || null;
   },
 
   async update(id, fields, connection = pool) {
@@ -112,17 +113,19 @@ export const clientRepository = {
 
     const updateMap = {};
     const normalizedEntries = Object.entries(nextFields);
-    const columns = normalizedEntries.map(([key]) => `${updateMap[key] || key} = ?`).join(", ");
+    const columns = normalizedEntries
+      .map(([key], index) => `${updateMap[key] || key} = $${index + 1}`)
+      .join(", ");
     const values = normalizedEntries.map(([, value]) => value);
-    const [result] = await connection.query(
-      `UPDATE clients SET ${columns}, updated_at = NOW() WHERE id = ?`,
+    const result = await connection.query(
+      `UPDATE clients SET ${columns}, updated_at = CURRENT_TIMESTAMP WHERE id = $${normalizedEntries.length + 1}`,
       [...values, id]
     );
-    return result.affectedRows > 0;
+    return result.rowCount > 0;
   },
 
   async remove(id, connection = pool) {
-    const [result] = await connection.query("DELETE FROM clients WHERE id = ?", [id]);
-    return result.affectedRows > 0;
+    const result = await connection.query("DELETE FROM clients WHERE id = $1", [id]);
+    return result.rowCount > 0;
   },
 };

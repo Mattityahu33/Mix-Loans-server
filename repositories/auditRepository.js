@@ -6,7 +6,7 @@ export const auditRepository = {
       `INSERT INTO audit_logs (
         admin_user_id, action_type, entity_type, entity_id, description,
         old_values, new_values, ip_address, user_agent
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         entry.admin_user_id || null,
         entry.action_type,

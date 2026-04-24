@@ -419,8 +419,8 @@ export const loanService = {
     }
 
     if (collateralUpdateRequested) {
-      const [rows] = await connection.query(
-        `SELECT id FROM collateral WHERE loan_id = ? ORDER BY id ASC LIMIT 1`,
+      const { rows } = await connection.query(
+        `SELECT id FROM collateral WHERE loan_id = $1 ORDER BY id ASC LIMIT 1`,
         [id]
       );
       const existingCollateralId = rows[0]?.id;

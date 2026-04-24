@@ -4,7 +4,7 @@ export const paymentRepository = {
   async list(filters = {}, connection = pool) {
     const search = filters.search ? `%${filters.search}%` : null;
     const status = filters.loan_status ? String(filters.loan_status).toLowerCase() : null;
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `SELECT
         p.*,
         l.client_id,
@@ -24,21 +24,21 @@ export const paymentRepository = {
       INNER JOIN loans l ON l.id = p.loan_id
       LEFT JOIN clients c ON c.id = l.client_id
       WHERE (
-        ? IS NULL OR
-        CAST(p.id AS CHAR) LIKE ? OR
-        p.payment_code LIKE ? OR
-        l.loan_code LIKE ? OR
-        CONCAT_WS(' ', c.first_name, c.last_name, c.other_names) LIKE ?
+        $1::text IS NULL OR
+        CAST(p.id AS TEXT) ILIKE $1 OR
+        p.payment_code ILIKE $1 OR
+        l.loan_code ILIKE $1 OR
+        CONCAT_WS(' ', c.first_name, c.last_name, c.other_names) ILIKE $1
       )
-        AND (? IS NULL OR l.status = ?)
+        AND ($2::text IS NULL OR LOWER(l.status::text) = $2)
       ORDER BY p.payment_date DESC, p.created_at DESC`,
-      [search, search, search, search, search, status, status]
+      [search, status]
     );
     return rows;
   },
 
   async listByLoanId(loanId, connection = pool) {
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `SELECT
         p.*,
         l.client_id,
@@ -56,7 +56,7 @@ export const paymentRepository = {
        FROM payments p
        INNER JOIN loans l ON l.id = p.loan_id
        LEFT JOIN clients c ON c.id = l.client_id
-       WHERE p.loan_id = ?
+       WHERE p.loan_id = $1
        ORDER BY p.payment_date DESC, p.created_at DESC`,
       [loanId]
     );
@@ -64,7 +64,7 @@ export const paymentRepository = {
   },
 
   async findById(id, connection = pool) {
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `SELECT
         p.*,
         l.client_id,
@@ -82,7 +82,7 @@ export const paymentRepository = {
        FROM payments p
        INNER JOIN loans l ON l.id = p.loan_id
        LEFT JOIN clients c ON c.id = l.client_id
-       WHERE p.id = ?
+       WHERE p.id = $1
        LIMIT 1`,
       [id]
     );
@@ -90,12 +90,13 @@ export const paymentRepository = {
   },
 
   async create(payment, connection = pool) {
-    const [result] = await connection.query(
+    const { rows } = await connection.query(
       `INSERT INTO payments (
         payment_code, loan_id, schedule_id, payment_date, amount,
         principal_applied, interest_applied, penalty_applied,
         payment_method, reference_number, received_by, notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      RETURNING id`,
       [
         payment.payment_code,
         payment.loan_id,
@@ -111,6 +112,6 @@ export const paymentRepository = {
         payment.notes || null,
       ]
     );
-    return result.insertId;
+    return rows[0]?.id || null;
   },
 };

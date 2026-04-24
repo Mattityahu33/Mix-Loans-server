@@ -3,10 +3,10 @@ import { SETTINGS_ROW_ID } from "../constants/appConstants.js";
 
 export const settingsRepository = {
   async findCurrent(connection = pool) {
-    const [rows] = await connection.query(
+    const { rows } = await connection.query(
       `SELECT *
        FROM settings
-       WHERE id = ?
+       WHERE id = $1
        LIMIT 1`,
       [SETTINGS_ROW_ID]
     );
@@ -19,21 +19,22 @@ export const settingsRepository = {
         id, app_name, theme, language, currency_code, currency_symbol, items_per_page,
         notifications_enabled, due_soon_days, default_interest_type, default_interest_rate,
         default_grace_period_days, hide_sensitive_info, dashboard_layout
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON DUPLICATE KEY UPDATE
-        app_name = VALUES(app_name),
-        theme = VALUES(theme),
-        language = VALUES(language),
-        currency_code = VALUES(currency_code),
-        currency_symbol = VALUES(currency_symbol),
-        items_per_page = VALUES(items_per_page),
-        notifications_enabled = VALUES(notifications_enabled),
-        due_soon_days = VALUES(due_soon_days),
-        default_interest_type = VALUES(default_interest_type),
-        default_interest_rate = VALUES(default_interest_rate),
-        default_grace_period_days = VALUES(default_grace_period_days),
-        hide_sensitive_info = VALUES(hide_sensitive_info),
-        dashboard_layout = VALUES(dashboard_layout)`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      ON CONFLICT (id) DO UPDATE SET
+        app_name = EXCLUDED.app_name,
+        theme = EXCLUDED.theme,
+        language = EXCLUDED.language,
+        currency_code = EXCLUDED.currency_code,
+        currency_symbol = EXCLUDED.currency_symbol,
+        items_per_page = EXCLUDED.items_per_page,
+        notifications_enabled = EXCLUDED.notifications_enabled,
+        due_soon_days = EXCLUDED.due_soon_days,
+        default_interest_type = EXCLUDED.default_interest_type,
+        default_interest_rate = EXCLUDED.default_interest_rate,
+        default_grace_period_days = EXCLUDED.default_grace_period_days,
+        hide_sensitive_info = EXCLUDED.hide_sensitive_info,
+        dashboard_layout = EXCLUDED.dashboard_layout,
+        updated_at = CURRENT_TIMESTAMP`,
       [
         SETTINGS_ROW_ID,
         settings.app_name,

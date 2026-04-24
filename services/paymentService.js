@@ -8,6 +8,19 @@ import { notificationService } from "./notificationService.js";
 
 const roundCurrency = (value) => Number(Number(value || 0).toFixed(2));
 
+const normalizePaymentMethod = (value) => {
+  const normalized = String(value || "cash").trim().toLowerCase();
+  const methodMap = {
+    cash: "cash",
+    bank: "bank_transfer",
+    bank_transfer: "bank_transfer",
+    mobile_money: "mobile_money",
+    card: "card",
+    other: "other",
+  };
+  return methodMap[normalized] || "cash";
+};
+
 const scheduleOutstandingBreakdown = (schedule) => {
   const amountPaid = Number(schedule.amount_paid || 0);
   const penaltyOutstanding = Math.max(0, Number(schedule.penalty_due || 0) - amountPaid);
@@ -126,7 +139,7 @@ export const paymentService = {
         principal_applied: principalApplied,
         interest_applied: interestApplied,
         penalty_applied: penaltyApplied,
-        payment_method: payload.payment_method || "cash",
+        payment_method: normalizePaymentMethod(payload.payment_method),
         reference_number: payload.reference_number || null,
         received_by: payload.actor_admin_id || null,
         notes: payload.notes || null,
