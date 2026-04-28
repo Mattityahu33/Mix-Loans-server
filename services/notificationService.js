@@ -3,16 +3,31 @@ import { LOAN_STATUS } from "../constants/loanConstants.js";
 import { notificationRepository } from "../repositories/notificationRepository.js";
 import { dbLoanStatusToUi } from "../utils/schemaAdapters.js";
 
+const toNotificationResponse = (notification) => ({
+  ...notification,
+  id: String(notification.id),
+  loan_id: notification.related_loan_id ? String(notification.related_loan_id) : null,
+  client_id: notification.related_client_id ? String(notification.related_client_id) : null,
+  status: notification.is_read ? "read" : "unread",
+});
+
 export const notificationService = {
   async list(filters, connection) {
     const notifications = await notificationRepository.list(filters, connection);
-    return notifications.map((notification) => ({
-      ...notification,
-      id: String(notification.id),
-      loan_id: notification.related_loan_id ? String(notification.related_loan_id) : null,
-      client_id: notification.related_client_id ? String(notification.related_client_id) : null,
-      status: notification.is_read ? "read" : "unread",
-    }));
+    return notifications.map(toNotificationResponse);
+  },
+
+  async markAsRead(id, connection) {
+    const notification = await notificationRepository.markAsRead(id, connection);
+    if (!notification) {
+      return null;
+    }
+    return toNotificationResponse(notification);
+  },
+
+  async markAllAsRead(connection) {
+    const notifications = await notificationRepository.markAllAsRead(connection);
+    return notifications.map(toNotificationResponse);
   },
 
   async notifyLoanStatus(loan, connection) {

@@ -6,7 +6,11 @@ export const notificationRepository = {
     const { rows } = await connection.query(
       `SELECT *
        FROM notifications
-       WHERE ($1::text IS NULL OR ($1 = 'unread' AND is_read = FALSE) OR ($1 = 'read' AND is_read = TRUE))
+       WHERE (
+         $1::text IS NULL OR
+         ($1 = 'unread' AND (is_read = FALSE OR read_at IS NULL)) OR
+         ($1 = 'read' AND is_read = TRUE AND read_at IS NOT NULL)
+       )
        ORDER BY created_at DESC`,
       [status]
     );
@@ -51,11 +55,32 @@ export const notificationRepository = {
     const placeholders = types.map((_, index) => `$${index + 2}`).join(", ");
     await connection.query(
       `UPDATE notifications
-       SET is_read = TRUE, read_at = CURRENT_TIMESTAMP
+       SET is_read = TRUE, read_at = COALESCE(read_at, CURRENT_TIMESTAMP)
        WHERE related_loan_id = $1
          AND type IN (${placeholders})
-         AND is_read = FALSE`,
+         AND (is_read = FALSE OR read_at IS NULL)`,
       [loanId, ...types]
     );
+  },
+
+  async markAsRead(id, connection = pool) {
+    const { rows } = await connection.query(
+      `UPDATE notifications
+       SET is_read = TRUE, read_at = COALESCE(read_at, CURRENT_TIMESTAMP)
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+    return rows[0] || null;
+  },
+
+  async markAllAsRead(connection = pool) {
+    const { rows } = await connection.query(
+      `UPDATE notifications
+       SET is_read = TRUE, read_at = COALESCE(read_at, CURRENT_TIMESTAMP)
+       WHERE is_read = FALSE OR read_at IS NULL
+       RETURNING *`
+    );
+    return rows;
   },
 };
