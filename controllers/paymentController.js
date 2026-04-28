@@ -42,3 +42,11 @@ export const createPayment = asyncHandler(async (req, res) => {
 
   return sendSuccess(res, HTTP_STATUS.CREATED, "Payment recorded successfully", data);
 });
+
+export const updatePayment = asyncHandler(async (req, res) => {
+  const data = await withTransaction(async (connection) => {
+    return paymentService.update(req.params.id, req.body, connection);
+  });
+
+  return sendSuccess(res, HTTP_STATUS.OK, "Payment updated successfully", data);
+});

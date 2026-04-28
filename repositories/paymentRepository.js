@@ -89,6 +89,31 @@ export const paymentRepository = {
     return rows[0] || null;
   },
 
+  async findByIdForUpdate(id, connection) {
+    const { rows } = await connection.query(
+      `SELECT *
+       FROM payments
+       WHERE id = $1
+       LIMIT 1
+       FOR UPDATE`,
+      [id]
+    );
+    return rows[0] || null;
+  },
+
+  async listByLoanIdForUpdate(loanId, connection) {
+    const { rows } = await connection.query(
+      `SELECT *
+       FROM payments
+       WHERE loan_id = $1
+         AND is_reversed = FALSE
+       ORDER BY payment_date ASC, id ASC
+       FOR UPDATE`,
+      [loanId]
+    );
+    return rows;
+  },
+
   async create(payment, connection = pool) {
     const { rows } = await connection.query(
       `INSERT INTO payments (
@@ -113,5 +138,21 @@ export const paymentRepository = {
       ]
     );
     return rows[0]?.id || null;
+  },
+
+  async update(id, fields, connection = pool) {
+    const entries = Object.entries(fields);
+    if (entries.length === 0) {
+      return false;
+    }
+    const columns = entries.map(([key], index) => `${key} = $${index + 1}`).join(", ");
+    const values = entries.map(([, value]) => value);
+    const result = await connection.query(
+      `UPDATE payments
+       SET ${columns}, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $${entries.length + 1}`,
+      [...values, id]
+    );
+    return result.rowCount > 0;
   },
 };

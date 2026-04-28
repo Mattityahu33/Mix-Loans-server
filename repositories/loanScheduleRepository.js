@@ -44,6 +44,18 @@ export const loanScheduleRepository = {
     return rows;
   },
 
+  async listByLoanIdForUpdate(loanId, connection) {
+    const { rows } = await connection.query(
+      `SELECT *
+       FROM loan_schedules
+       WHERE loan_id = $1
+       ORDER BY installment_number ASC
+       FOR UPDATE`,
+      [loanId]
+    );
+    return rows;
+  },
+
   async listOutstandingByLoanIdForUpdate(loanId, connection) {
     const { rows } = await connection.query(
       `SELECT *

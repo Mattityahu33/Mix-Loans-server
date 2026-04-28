@@ -58,13 +58,17 @@ export const loanRepository = {
 
   async findByIdForUpdate(id, connection) {
     const { rows } = await connection.query(
-      `${baseSelect}
-       WHERE l.id = $1
+      `SELECT id
+       FROM loans
+       WHERE id = $1
        LIMIT 1
        FOR UPDATE`,
       [id]
     );
-    return rows[0] || null;
+    if (!rows[0]) {
+      return null;
+    }
+    return this.findById(id, connection);
   },
 
   async countOpenLoansForClient(clientId, connection = pool) {
